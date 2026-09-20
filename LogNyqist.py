@@ -2,9 +2,14 @@
 # under construction
 
 import sys
+import os
+import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+
+MAX_FILES = 3
+
 
 def read_bode_file(path):
     freqs = []
@@ -94,34 +99,64 @@ def interpolate_curve(x, y, freqs, mags_db, phases_deg, n_sub=50):
     )
 
 
-def get_input_path():
-    """コマンドライン引数でファイル名が与えられていればそれを使い、
-    なければ標準入力で問い合わせる（デフォルトのファイル名は持たない）。"""
+def get_input_paths():
+    """コマンドライン引数でファイル名が与えられていればそれを使い（最大 MAX_FILES 個）、
+    なければ標準入力で問い合わせる（1〜MAX_FILES 個、空Enterで入力終了）。"""
     if len(sys.argv) > 1:
-        return sys.argv[1]
-    return input("ナイキストデータのファイル名を入力してください: ")
+        return sys.argv[1:MAX_FILES + 1]
+
+    paths = []
+    for i in range(MAX_FILES):
+        prompt = (
+            f"ナイキストデータのファイル名を入力してください ({i + 1}/{MAX_FILES}"
+            + ("、空Enterで終了" if i > 0 else "")
+            + "): "
+        )
+        path = input(prompt).strip()
+        if not path:
+            break
+        paths.append(path)
+
+    if not paths:
+        print("ファイルが指定されませんでした。終了します。")
+        sys.exit(1)
+
+    return paths
 
 
 # -----------------------------
 # データ読み込み	入力に電源を置いてLTspiceで安定性のAC解析をした結果
 # -----------------------------
-input_path = get_input_path()
-freqs, logrs, phases, mags_db, phases_deg = read_bode_file(input_path)
+input_paths = get_input_paths()
 
-# 例: 最初の要素を確認
-# print(freqs[0], logrs[0], phases[0])
-# exit()
+COLORS = ['tab:blue', 'tab:orange', 'tab:green']
 
-x = logrs * np.cos(phases)
-y = logrs * np.sin(phases)
+curves = []
+for i, path in enumerate(input_paths):
+    freqs, logrs, phases, mags_db, phases_deg = read_bode_file(path)
 
-# マウス近接判定・数値表示用に、曲線を細かく補間しておく
-# （低周波側はデータ間隔が広く、そのままだとマウスが曲線に近づいても
-#   最近傍データ点までの距離が閾値を超えて表示が消えてしまうため）
-x_fine, y_fine, freq_fine, mag_db_fine, phase_deg_fine = interpolate_curve(
-    x, y, freqs, mags_db, phases_deg
-)
-abs_fine = 10 ** (mag_db_fine / 20.0)
+    x = logrs * np.cos(phases)
+    y = logrs * np.sin(phases)
+
+    # マウス近接判定・数値表示用に、曲線を細かく補間しておく
+    # （低周波側はデータ間隔が広く、そのままだとマウスが曲線に近づいても
+    #   最近傍データ点までの距離が閾値を超えて表示が消えてしまうため）
+    x_fine, y_fine, freq_fine, mag_db_fine, phase_deg_fine = interpolate_curve(
+        x, y, freqs, mags_db, phases_deg
+    )
+    abs_fine = 10 ** (mag_db_fine / 20.0)
+
+    curves.append({
+        "path": path,
+        "label": os.path.basename(path),
+        "color": COLORS[i % len(COLORS)],
+        "x": x, "y": y,
+        "x_fine": x_fine, "y_fine": y_fine,
+        "freq_fine": freq_fine,
+        "mag_db_fine": mag_db_fine,
+        "phase_deg_fine": phase_deg_fine,
+        "abs_fine": abs_fine,
+    })
 
 # -----------------------------
 # 数値表示（有効数字ベースで桁数を絞る）
@@ -201,13 +236,26 @@ def extend_grid_circles(view_extent):
 for p in range(6):  # 1, 10, 100, 1k, 10k, 100k
     draw_grid_circle(p)
 
-# 曲線を描く
-(line,) = ax.plot(x, y, color='blue')
+# 曲線を描く（ファイルごとに色分けし、凡例にファイル名を表示）
+NORMAL_LINEWIDTH = 1.5
+SELECTED_LINEWIDTH = 3.0
 
-# マウスが近づいている点を示すマーカー（曲線と同色・線より少し太い径）
+for c in curves:
+    (line,) = ax.plot(
+        c["x"], c["y"],
+        color=c["color"],
+        linewidth=NORMAL_LINEWIDTH,
+        label=c["label"],
+        zorder=2,
+    )
+    c["line"] = line
+
+ax.legend(loc='upper left', fontsize=9)
+
+# マウスが近づいている点を示すマーカー（選択中の曲線と同色）
 (marker,) = ax.plot(
     [], [], 'o',
-    color=line.get_color(),
+    color=curves[0]["color"],
     markersize=8,
     markeredgecolor='none',
     zorder=5,
@@ -222,6 +270,22 @@ info_text = ax.text(
     bbox=dict(facecolor='white', alpha=0.7)
 )
 
+# 現在ハイライト中の曲線（未選択状態と区別するため None から始める）
+selected_curve = None
+
+
+def set_selected_curve(curve):
+    """選択中の曲線を太線・最前面にし、他の曲線は通常表示に戻す。"""
+    global selected_curve
+    if curve is selected_curve:
+        return
+    for c in curves:
+        is_selected = (c is curve)
+        c["line"].set_linewidth(SELECTED_LINEWIDTH if is_selected else NORMAL_LINEWIDTH)
+        c["line"].set_zorder(4 if is_selected else 2)
+    selected_curve = curve
+
+
 # -----------------------------
 # マウスイベント処理
 # -----------------------------
@@ -229,29 +293,42 @@ def on_move(event):
     if not event.inaxes:
         info_text.set_text("")
         marker.set_data([], [])
+        set_selected_curve(None)
         fig.canvas.draw_idle()
         return
 
     # マウス位置
     mx, my = event.xdata, event.ydata
 
-    # 補間済みの曲線との距離を計算
-    dist = np.hypot(x_fine - mx, y_fine - my)
-    idx = np.argmin(dist)
+    # 各曲線の補間済みデータとの距離を計算し、最も近い曲線・点を選ぶ
+    best_curve = None
+    best_idx = None
+    best_dist = None
+    for c in curves:
+        dist = np.hypot(c["x_fine"] - mx, c["y_fine"] - my)
+        idx = np.argmin(dist)
+        if best_dist is None or dist[idx] < best_dist:
+            best_dist = dist[idx]
+            best_idx = idx
+            best_curve = c
 
     # 近い場合だけ表示（閾値は調整可能）
-    if dist[idx] < 0.2:
-        freq_str = human_readable_freq(freq_fine[idx])
-        abs_str = human_readable_value(abs_fine[idx])
-        mag_db_str = format_sig(mag_db_fine[idx])
-        phase_str = format_sig(phase_deg_fine[idx])
+    if best_dist is not None and best_dist < 0.2:
+        freq_str = human_readable_freq(best_curve["freq_fine"][best_idx])
+        abs_str = human_readable_value(best_curve["abs_fine"][best_idx])
+        mag_db_str = format_sig(best_curve["mag_db_fine"][best_idx])
+        phase_str = format_sig(best_curve["phase_deg_fine"][best_idx])
         info_text.set_text(
+            f"{best_curve['label']}\n"
             f"{freq_str}\n{abs_str} ({mag_db_str} dB)\n{phase_str}°"
         )
-        marker.set_data([x_fine[idx]], [y_fine[idx]])
+        marker.set_data([best_curve["x_fine"][best_idx]], [best_curve["y_fine"][best_idx]])
+        marker.set_color(best_curve["color"])
+        set_selected_curve(best_curve)
     else:
         info_text.set_text("")
         marker.set_data([], [])
+        set_selected_curve(None)
 
     fig.canvas.draw_idle()
 
@@ -283,9 +360,29 @@ def on_scroll(event):
     fig.canvas.draw_idle()
 
 
+# -----------------------------
+# Pキーによる PNG 出力
+# -----------------------------
+def make_png_filename():
+    names = [os.path.splitext(c["label"])[0] for c in curves]
+    base = "_".join(names)
+    if len(base) > 80:
+        base = base[:80]
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{base}_{timestamp}.png"
+
+
+def on_key(event):
+    if event.key in ('p', 'P'):
+        filename = make_png_filename()
+        fig.savefig(filename, dpi=150)
+        print(f"プロットを画像として保存しました: {filename}")
+
+
 # イベント登録
 fig.canvas.mpl_connect("motion_notify_event", on_move)
 fig.canvas.mpl_connect("scroll_event", on_scroll)
+fig.canvas.mpl_connect("key_press_event", on_key)
 
 plt.title("LogNyquist Plot")
 plt.show()
