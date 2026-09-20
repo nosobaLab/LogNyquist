@@ -51,3 +51,7 @@ python LogNyqist.py file1.txt [file2.txt] [file3.txt]
 ```bash
 pip install numpy matplotlib
 ```
+
+## ライセンス
+
+[MIT](LICENSE)

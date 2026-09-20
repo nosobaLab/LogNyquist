@@ -51,3 +51,7 @@ When multiple files are loaded, each curve is color-coded and labeled by file na
 ```bash
 pip install numpy matplotlib
 ```
+
+## License
+
+[MIT](LICENSE)
