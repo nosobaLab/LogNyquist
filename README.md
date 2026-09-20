@@ -1,14 +1,14 @@
 # LogNyquist
 
-*[English version here](README.en.md)*
+*[日本語版はこちら](READMEj.md)*
 
-LTspice の AC 解析結果（Bode 形式のテキスト出力）から、**対数目盛のナイキスト線図**を描画するツールです。
+A tool for drawing a **log-scale Nyquist plot** from LTspice AC analysis results (Bode-style text export).
 
-通常のナイキスト線図は振幅の大小でスケールが大きく変わり、安定性判別に重要な原点付近（-1+j0 付近）と高振幅域を同時に見づらいという問題があります。本ツールは振幅を `log10(|G| + 1)` に変換して極座標プロットすることで、原点付近の詳細と広いダイナミックレンジを同じ図の中で確認できるようにしています。
+A conventional Nyquist plot can span a huge range of magnitudes, making it hard to see both the region near the origin (around -1+j0, which matters most for stability judgment) and the high-magnitude region in the same chart. This tool transforms the magnitude to `log10(|G| + 1)` before plotting in polar coordinates, so both the fine detail near the origin and the wide dynamic range stay visible in one figure.
 
-## 入力データ形式
+## Input data format
 
-LTspice の AC 解析結果を「エクスポートデータのコピー」等でテキスト出力したもの（周波数、複素数（dB, deg）形式）を想定しています。
+The input is expected to be a text export of an LTspice AC analysis (e.g. via "Copy data to Clipboard"), containing frequency and complex gain in (dB, deg) form.
 
 ```
 Freq.	V(vout)/(-V(vn))
@@ -17,31 +17,31 @@ Freq.	V(vout)/(-V(vn))
 ...
 ```
 
-- 1列目: 周波数 [Hz]
-- 2列目: `(振幅[dB],位相[deg]°)` 形式の複素ゲイン
+- Column 1: frequency [Hz]
+- Column 2: complex gain in `(magnitude[dB],phase[deg]°)` form
 
-サンプルとして `opa704_ac.txt`, `opa704_ac_1.txt`, `Huijsing_opa_02.txt` を同梱しています。
+Sample files `opa704_ac.txt`, `opa704_ac_1.txt`, and `Huijsing_opa_02.txt` are included.
 
-## 使い方
+## Usage
 
 ```bash
 python LogNyqist.py file1.txt [file2.txt] [file3.txt]
 ```
 
-- ファイルは最大3つまで同時に読み込み、比較表示できます。
-- コマンドライン引数を省略した場合は、対話形式で1〜3個のファイル名を尋ねられます（2つ目以降は空Enterで入力終了）。
+- Up to 3 files can be loaded and compared at once.
+- If no command-line arguments are given, you'll be prompted interactively for 1 to 3 file names (press Enter on an empty line to stop after the first).
 
-### 操作方法
+### Controls
 
-| 操作 | 内容 |
+| Action | Effect |
 | --- | --- |
-| マウスホバー | 最も近い曲線上の周波数・振幅（絶対値/dB）・位相を表示。該当する曲線は太線でハイライトされ、どのファイルのデータかもラベル表示される |
-| マウスホイール | 原点を中心に拡大・縮小（拡大すると目盛りの円が自動追加される） |
-| `P` キー | 現在の表示をタイムスタンプ付きPNGファイルとして保存 |
+| Mouse hover | Shows the frequency, magnitude (linear/dB), and phase at the nearest point on any curve. The corresponding curve is highlighted with a thicker line, and its source file name is shown |
+| Mouse wheel | Zoom in/out around the origin (grid circles are added automatically as you zoom in) |
+| `P` key | Save the current view as a timestamped PNG file |
 
-複数ファイルを読み込んだ場合、凡例（左上）にファイル名が表示され、曲線ごとに色分けされます。
+When multiple files are loaded, each curve is color-coded and labeled by file name in the legend (top-left).
 
-## 必要なパッケージ
+## Requirements
 
 - numpy
 - matplotlib
