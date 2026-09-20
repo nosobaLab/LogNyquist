@@ -2,3 +2,7 @@
 !.gitignore
 !LogNyqist.py
 !README.md
+!*.txt
+!bench/
+!bench/*.asc
+!bench/*.asy
