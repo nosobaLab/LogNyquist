@@ -2,6 +2,8 @@
 
 *[日本語版はこちら](READMEj.md)*
 
+![LogNyquist screenshot](docs/screenshot.png)
+
 A tool for drawing a **log-scale Nyquist plot** from LTspice AC analysis results (Bode-style text export).
 
 A conventional Nyquist plot can span a huge range of magnitudes, making it hard to see both the region near the origin (around -1+j0, which matters most for stability judgment) and the high-magnitude region in the same chart. This tool transforms the magnitude to `log10(|G| + 1)` before plotting in polar coordinates, so both the fine detail near the origin and the wide dynamic range stay visible in one figure.
