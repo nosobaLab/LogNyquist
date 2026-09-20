@@ -24,25 +24,25 @@ def read_bode_file(path):
             if not line or line.startswith("Freq."):
                 continue
 
-            # タブ区切りで周波数と値部分に分割
+            # Split into frequency and value parts (whitespace-separated)
             parts = line.split()
             freq = float(parts[0])
 
-            # 例: (4.0037e+01dB,-8.2480e+01ｰ)
+            # Example: (4.0037e+01dB,-8.2480e+01ｰ)
             raw = parts[1]
 
-            # 先頭の "(" と末尾の ")" を除去
+            # Strip the leading "(" and trailing ")"
             raw = raw.strip("()")
 
             mag_str, phase_str = raw.split(",")
 
-            # "dB" と "ｰ" を除去
+            # Remove "dB" and "ｰ"
             mag_db = float(mag_str.replace("dB", ""))
             phase_deg = float(phase_str.replace("ｰ", ""))
 
-            # dB → log値
+            # dB -> log value
             logr = math.log10(10**(mag_db / 20.0)+1)
-            # degree → radian
+            # degree -> radian
             phase_rad = np.deg2rad(phase_deg)
 
             freqs.append(freq)
@@ -62,11 +62,11 @@ def read_bode_file(path):
 
 def interpolate_curve(x, y, freqs, mags_db, phases_deg, n_sub=50):
     """
-    隣接データ点の間を n_sub 分割して補間する。
-    x, y は区間内で線形補間（プロットの折れ線と一致させるため）。
-    freq は等比数列的に補間する（LTspiceのAC解析は周波数が対数的に
-    スイープされているため、対数軸上で線形＝等比数列となる）。
-    mag(dB), phase(deg) は線形補間する。
+    Interpolate between adjacent data points by splitting each interval into n_sub steps.
+    x, y are linearly interpolated within each interval (to match the plotted polyline).
+    freq is interpolated as a geometric sequence (since LTspice AC analysis sweeps
+    frequency logarithmically, linear on a log axis means a geometric sequence).
+    mag(dB) and phase(deg) are linearly interpolated.
     """
     x_fine = []
     y_fine = []
@@ -83,7 +83,7 @@ def interpolate_curve(x, y, freqs, mags_db, phases_deg, n_sub=50):
         mag_db_fine.append(mags_db[i] + (mags_db[i + 1] - mags_db[i]) * t)
         phase_deg_fine.append(phases_deg[i] + (phases_deg[i + 1] - phases_deg[i]) * t)
 
-    # 最後の点を追加
+    # Append the last point
     x_fine.append([x[-1]])
     y_fine.append([y[-1]])
     freq_fine.append([freqs[-1]])
@@ -100,16 +100,16 @@ def interpolate_curve(x, y, freqs, mags_db, phases_deg, n_sub=50):
 
 
 def get_input_paths():
-    """コマンドライン引数でファイル名が与えられていればそれを使い（最大 MAX_FILES 個）、
-    なければ標準入力で問い合わせる（1〜MAX_FILES 個、空Enterで入力終了）。"""
+    """Use file names given as command-line arguments if present (up to MAX_FILES),
+    otherwise prompt via standard input (1 to MAX_FILES, blank Enter to stop)."""
     if len(sys.argv) > 1:
         return sys.argv[1:MAX_FILES + 1]
 
     paths = []
     for i in range(MAX_FILES):
         prompt = (
-            f"ナイキストデータのファイル名を入力してください ({i + 1}/{MAX_FILES}"
-            + ("、空Enterで終了" if i > 0 else "")
+            f"Enter the Nyquist data file name ({i + 1}/{MAX_FILES}"
+            + (", blank Enter to finish" if i > 0 else "")
             + "): "
         )
         path = input(prompt).strip()
@@ -118,14 +118,14 @@ def get_input_paths():
         paths.append(path)
 
     if not paths:
-        print("ファイルが指定されませんでした。終了します。")
+        print("No file specified. Exiting.")
         sys.exit(1)
 
     return paths
 
 
 # -----------------------------
-# データ読み込み	入力に電源を置いてLTspiceで安定性のAC解析をした結果
+# Data loading: results of an LTspice stability AC analysis with a source at the input
 # -----------------------------
 input_paths = get_input_paths()
 
@@ -138,9 +138,10 @@ for i, path in enumerate(input_paths):
     x = logrs * np.cos(phases)
     y = logrs * np.sin(phases)
 
-    # マウス近接判定・数値表示用に、曲線を細かく補間しておく
-    # （低周波側はデータ間隔が広く、そのままだとマウスが曲線に近づいても
-    #   最近傍データ点までの距離が閾値を超えて表示が消えてしまうため）
+    # Finely interpolate the curve for mouse-proximity detection and value display
+    # (at low frequencies the data spacing is wide, so without this the distance
+    #  to the nearest data point can exceed the threshold even when the mouse is
+    #  close to the curve, causing the display to disappear)
     x_fine, y_fine, freq_fine, mag_db_fine, phase_deg_fine = interpolate_curve(
         x, y, freqs, mags_db, phases_deg
     )
@@ -159,12 +160,12 @@ for i, path in enumerate(input_paths):
     })
 
 # -----------------------------
-# 数値表示（有効数字ベースで桁数を絞る）
+# Value display (limit digit count based on significant figures)
 # -----------------------------
 def format_sig(value, sig=3, max_decimals=3):
     """
-    value を有効数字 sig 桁で丸めて文字列化する。
-    小数点以下は max_decimals 桁を超えない。末尾の余分な0は削る。
+    Round value to sig significant figures and format it as a string.
+    Never exceed max_decimals decimal places. Strip trailing zeros.
     """
     if value == 0:
         return "0"
@@ -180,7 +181,7 @@ def format_sig(value, sig=3, max_decimals=3):
 
 
 def human_readable_value(n, unit=""):
-    """有効数字を考慮しつつ、k/M/G 接尾辞付きで値を文字列化する。"""
+    """Format a value as a string with k/M/G suffixes, honoring significant figures."""
     if n >= 1_000_000_000:
         return format_sig(n / 1_000_000_000) + "G" + unit
     elif n >= 1_000_000:
@@ -196,35 +197,35 @@ def human_readable_freq(n):
 
 
 # -----------------------------
-# プロット準備
+# Plot setup
 # -----------------------------
 fig, ax = plt.subplots(figsize=(8, 8))
 ax.set_aspect('equal', adjustable='box')
 
-# 軸の目盛りを消す
+# Hide axis ticks
 ax.set_xticks([])
 ax.set_yticks([])
 
-# 実軸・虚軸
+# Real and imaginary axes
 ax.axhline(0, color='black', linewidth=1)
 ax.axvline(0, color='black', linewidth=1)
 
-# 目盛りの円を描く
+# Draw the grid circles
 theta = np.linspace(0, 2*np.pi, 400)
-grid_powers = []  # 描画済みの目盛り（振幅の絶対値 10^p）の指数 p のリスト
+grid_powers = []  # exponents p of the drawn grid circles (magnitude 10^p)
 
 
 def draw_grid_circle(power):
     A = 10 ** power
     radius = math.log10(A + 1)
     ax.plot(radius*np.cos(theta), radius*np.sin(theta), color='gray', linestyle='--')
-    # clip_on=True: 表示範囲外に出たラベルは自動的に非表示にする
+    # clip_on=True: automatically hide labels that fall outside the view
     ax.text(radius, 0, human_readable_value(A), fontsize=10, va='bottom', ha='left', clip_on=True)
     grid_powers.append(power)
 
 
 def extend_grid_circles(view_extent):
-    """表示範囲が広がったとき、必要な桁まで目盛りの円を追加で描く。"""
+    """When the view range expands, draw additional grid circles up to the needed decade."""
     while True:
         next_power = max(grid_powers) + 1
         radius = math.log10(10 ** next_power + 1)
@@ -236,7 +237,7 @@ def extend_grid_circles(view_extent):
 for p in range(6):  # 1, 10, 100, 1k, 10k, 100k
     draw_grid_circle(p)
 
-# 曲線を描く（ファイルごとに色分けし、凡例にファイル名を表示）
+# Draw the curves (color-coded per file, with file names shown in the legend)
 NORMAL_LINEWIDTH = 1.5
 SELECTED_LINEWIDTH = 3.0
 
@@ -252,7 +253,7 @@ for c in curves:
 
 ax.legend(loc='upper left', fontsize=9)
 
-# マウスが近づいている点を示すマーカー（選択中の曲線と同色）
+# Marker showing the point closest to the mouse (same color as the selected curve)
 (marker,) = ax.plot(
     [], [], 'o',
     color=curves[0]["color"],
@@ -262,7 +263,7 @@ ax.legend(loc='upper left', fontsize=9)
 )
 
 # -----------------------------
-# 固定位置のテキスト（右上）
+# Fixed-position text (top right)
 # -----------------------------
 info_text = ax.text(
     0.95, 0.95, "", transform=ax.transAxes,
@@ -270,12 +271,12 @@ info_text = ax.text(
     bbox=dict(facecolor='white', alpha=0.7)
 )
 
-# 現在ハイライト中の曲線（未選択状態と区別するため None から始める）
+# Currently highlighted curve (starts at None to distinguish from the unselected state)
 selected_curve = None
 
 
 def set_selected_curve(curve):
-    """選択中の曲線を太線・最前面にし、他の曲線は通常表示に戻す。"""
+    """Make the selected curve bold and bring it to the front; reset the others to normal."""
     global selected_curve
     if curve is selected_curve:
         return
@@ -287,7 +288,7 @@ def set_selected_curve(curve):
 
 
 # -----------------------------
-# マウスイベント処理
+# Mouse event handling
 # -----------------------------
 def on_move(event):
     if not event.inaxes:
@@ -297,10 +298,10 @@ def on_move(event):
         fig.canvas.draw_idle()
         return
 
-    # マウス位置
+    # Mouse position
     mx, my = event.xdata, event.ydata
 
-    # 各曲線の補間済みデータとの距離を計算し、最も近い曲線・点を選ぶ
+    # Compute the distance to each curve's interpolated data and pick the closest curve/point
     best_curve = None
     best_idx = None
     best_dist = None
@@ -312,7 +313,7 @@ def on_move(event):
             best_idx = idx
             best_curve = c
 
-    # 近い場合だけ表示（閾値は調整可能）
+    # Only show when close enough (the threshold is adjustable)
     if best_dist is not None and best_dist < 0.2:
         freq_str = human_readable_freq(best_curve["freq_fine"][best_idx])
         abs_str = human_readable_value(best_curve["abs_fine"][best_idx])
@@ -334,7 +335,7 @@ def on_move(event):
 
 
 # -----------------------------
-# マウスホイールによる拡大縮小
+# Zoom in/out with the mouse wheel
 # -----------------------------
 def on_scroll(event):
     if not event.inaxes:
@@ -349,11 +350,11 @@ def on_scroll(event):
     new_width = (cur_xlim[1] - cur_xlim[0]) * scale_factor
     new_height = (cur_ylim[1] - cur_ylim[0]) * scale_factor
 
-    # マウス位置に関わらず、常に原点を中心に拡大縮小する
+    # Always zoom centered on the origin, regardless of mouse position
     ax.set_xlim(-new_width / 2, new_width / 2)
     ax.set_ylim(-new_height / 2, new_height / 2)
 
-    # 表示範囲が広がった場合、必要な桁まで目盛りの円を追加する
+    # If the view range expanded, add grid circles up to the needed decade
     view_extent = math.hypot(new_width / 2, new_height / 2)
     extend_grid_circles(view_extent)
 
@@ -361,7 +362,7 @@ def on_scroll(event):
 
 
 # -----------------------------
-# Pキーによる PNG 出力
+# PNG export via the P key
 # -----------------------------
 def make_png_filename():
     names = [os.path.splitext(c["label"])[0] for c in curves]
@@ -376,10 +377,10 @@ def on_key(event):
     if event.key in ('p', 'P'):
         filename = make_png_filename()
         fig.savefig(filename, dpi=150)
-        print(f"プロットを画像として保存しました: {filename}")
+        print(f"Plot saved as image: {filename}")
 
 
-# イベント登録
+# Register event handlers
 fig.canvas.mpl_connect("motion_notify_event", on_move)
 fig.canvas.mpl_connect("scroll_event", on_scroll)
 fig.canvas.mpl_connect("key_press_event", on_key)
